@@ -47,6 +47,12 @@
 (defun cal-ph (pH-counts)
   (lerp pH-counts *pH-low-count* *ph-low-point* *pH-high-count* *ph-high-point*))
 
+;;; https://www.phidgets.com/?prodid=1181#Measuring_Oxidation/Reduction_Potential_(ORP)
+(defun cal-orp (ORP-counts)
+  "Calculate ORP per Phidget documentation"
+  (let ((voltage (calibrate ORP-counts *mcp3008-scale* 0)))
+    (/ (- 2.5 voltage) 1.037)))
+
 (defun collect-data ()
   (let ((mcp3008-data (mapcar #'read-sensor-channel (loop for i below 8 collect i)))
 	(timestamp (timestamp)))
@@ -56,7 +62,7 @@
 	     (send-datum-udp (format nil "pool.mcp3008.ch~A.voltage" i) (calibrate (nth i mcp3008-data) *mcp3008-scale* 0) timestamp)))
     ;; Send pH
     (send-datum-udp "pool.measurements.pH" (cal-ph (nth 0 mcp3008-data)))
-    (send-datum-udp "pool.measurements.ORP" (calibrate (nth 1 mcp3008-data) *mcp3008-scale* 0))))
+    (send-datum-udp "pool.measurements.ORP" (cal-orp (nth 1 mcp3008-data)))))
 
 (defun reset () 
   (setf *socket* (usocket:socket-connect *graphite-ip* *graphite-udp-port* :protocol :datagram)))
