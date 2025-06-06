@@ -1,0 +1,13 @@
+[Unit]
+Description=Pool Sensor Data Collection
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/home/nick/lisp/libre-pool/libre-pool
+Type=exec
+#Restart=on-failure
+
+[Install]
+WantedBy=default.target
+#RequiredBy=network.target

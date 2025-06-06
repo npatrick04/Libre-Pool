@@ -15,3 +15,15 @@ Put this library in ~/common-lisp
 cd ~/common-lisp/libre-pool
 make
 
+# Create the service
+Copy the libre-pool.service file to ~/.config/systemd/user
+
+Enable the service with
+```
+systemctl --user enable libre-pool.service
+```
+
+Start the service with
+```
+systemctl --user restart libre-pool.service
+```
