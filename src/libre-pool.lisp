@@ -53,8 +53,16 @@
   (let ((voltage (calibrate ORP-counts *mcp3008-scale* 0)))
     (/ (- 2.5 voltage) 1.037)))
 
+(defun read-water-temp ()
+  "Get water temp in degrees Celsius"
+  (with-open-file (in "/sys/bus/w1/devices/28-00000a006453/temperature")
+    ;; DS18B20 with w1-gpio reads temp in milliCelcius
+    (let ((temp (parse-integer (read-line in))))
+      (/ temp 1000.0))))
+
 (defun collect-data ()
   (let ((mcp3008-data (mapcar #'read-sensor-channel (loop for i below 8 collect i)))
+	(water-temp (read-water-temp))
 	(timestamp (timestamp)))
     ;; Send raw channel data
     (loop for i below 8 do
@@ -62,7 +70,11 @@
 	     (send-datum-udp (format nil "pool.mcp3008.ch~A.voltage" i) (calibrate (nth i mcp3008-data) *mcp3008-scale* 0) timestamp)))
     ;; Send pH
     (send-datum-udp "pool.measurements.pH" (cal-ph (nth 0 mcp3008-data)))
-    (send-datum-udp "pool.measurements.ORP" (cal-orp (nth 1 mcp3008-data)))))
+    (send-datum-udp "pool.measurements.ORP" (cal-orp (nth 1 mcp3008-data)))
+
+    ;; Water Temperature
+    (send-datum-udp "pool.measurements.waterTempC" water-temp timestamp)
+    (send-datum-udp "pool.measurements.waterTempF" (+ (* water-temp 9/5) 32) timestamp)))
 
 (defun reset () 
   (setf *socket* (usocket:socket-connect *graphite-ip* *graphite-udp-port* :protocol :datagram)))

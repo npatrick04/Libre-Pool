@@ -5,6 +5,11 @@ sudo ldto merge spicc
 sudo ldto merge spicc-mcp3008
 ```
 
+This will enable the one-wire protocol to support the DS18B20 temp sensor.
+```
+sudo ldto merge w1-gpio
+```
+
 # Install SBCL and quicklisp
 sudo apt install sbcl
 
