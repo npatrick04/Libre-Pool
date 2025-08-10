@@ -16,10 +16,9 @@
 
 ;;; Sensor Calibrations
 (defparameter *mcp3008-scale* (/ 3.3 1024))
-(defparameter *pH-low-point* 4.0)
-(defparameter *pH-high-point* 7.0)
-(defparameter *pH-low-count* 18)
-(defparameter *pH-high-count* 480)
+;;; Calibration 7/20/2025
+(defparameter *pH-cal-counts* '( 144 601 1023))
+(defparameter *pH-cal-points* '(4.0 7.0 10.01))
 
 (defun timestamp ()
   (string-trim '(#\Space #\Newline) (with-output-to-string (stream)
@@ -41,11 +40,22 @@
 (defun calibrate (count scale bias)
   (* (+ count bias) scale))
 
-(defun lerp (x x0 y0 x1 y1)
+(defun my-lerp (x x0 y0 x1 y1)
   (/ (+ (* y0 (- x1 x)) (* y1 (- x x0))) (- x1 x0)))
 
+(defun lerps (x xs ys)
+  (do ((xs xs (cdr xs))
+       (ys ys (cdr ys)))
+      ;; Either the x value is less than first xs OR
+      ;;                    is > first xs and < second xs OR
+      ;;                    We're all out of more stages
+      ((or (<= x (car xs))
+	   (and (> x (car xs)) (< x (cadr xs)))
+	   (= 2 (length xs)))
+       (my-lerp x (first xs) (first ys) (second xs) (second ys)))))
+
 (defun cal-ph (pH-counts)
-  (lerp pH-counts *pH-low-count* *ph-low-point* *pH-high-count* *ph-high-point*))
+  (lerps pH-counts *pH-cal-counts* *pH-cal-points*))
 
 ;;; https://www.phidgets.com/?prodid=1181#Measuring_Oxidation/Reduction_Potential_(ORP)
 (defun cal-orp (ORP-counts)
@@ -55,14 +65,21 @@
 
 (defun read-water-temp ()
   "Get water temp in degrees Celsius"
-  (with-open-file (in "/sys/bus/w1/devices/28-00000a006453/temperature")
+  (with-open-file (in "/sys/bus/w1/devices/28-00000a006453/temperature" :if-does-not-exist nil)
     ;; DS18B20 with w1-gpio reads temp in milliCelcius
-    (let ((temp (parse-integer (read-line in))))
+    (when in
+      (let ((temp (parse-integer (read-line in nil))))
+	(/ temp 1000.0)))))
+
+(defun read-proc-temp ()
+  (with-open-file (in "/sys/class/thermal/thermal_zone0/temp")
+    (let ((temp (parse-integer (read-line in nil))))
       (/ temp 1000.0))))
 
 (defun collect-data ()
   (let ((mcp3008-data (mapcar #'read-sensor-channel (loop for i below 8 collect i)))
 	(water-temp (read-water-temp))
+	(proc-temp-c (read-proc-temp))
 	(timestamp (timestamp)))
     ;; Send raw channel data
     (loop for i below 8 do
@@ -73,8 +90,13 @@
     (send-datum-udp "pool.measurements.ORP" (cal-orp (nth 1 mcp3008-data)))
 
     ;; Water Temperature
-    (send-datum-udp "pool.measurements.waterTempC" water-temp timestamp)
-    (send-datum-udp "pool.measurements.waterTempF" (+ (* water-temp 9/5) 32) timestamp)))
+    (when water-temp
+      (send-datum-udp "pool.measurements.waterTempC" water-temp timestamp)
+      (send-datum-udp "pool.measurements.waterTempF" (+ (* water-temp 9/5) 32) timestamp))
+
+    ;; Processor Temperature
+    (send-datum-udp "pool.processor.temp-c" proc-temp-c)
+    (send-datum-udp "pool.processor.temp-f" (+ (* proc-temp-c 9/5) 32))))
 
 (defun reset () 
   (setf *socket* (usocket:socket-connect *graphite-ip* *graphite-udp-port* :protocol :datagram)))
