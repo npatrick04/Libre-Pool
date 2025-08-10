@@ -76,6 +76,10 @@
     (let ((temp (parse-integer (read-line in nil))))
       (/ temp 1000.0))))
 
+(defun read-fan-speed ()
+  (with-open-file (in "/sys/class/hwmon/hwmon1/fan1_input")
+    (parse-integer (read-line in nil))))
+
 (defun collect-data ()
   (let ((mcp3008-data (mapcar #'read-sensor-channel (loop for i below 8 collect i)))
 	(water-temp (read-water-temp))
@@ -96,7 +100,10 @@
 
     ;; Processor Temperature
     (send-datum-udp "pool.processor.temp-c" proc-temp-c)
-    (send-datum-udp "pool.processor.temp-f" (+ (* proc-temp-c 9/5) 32))))
+    (send-datum-udp "pool.processor.temp-f" (+ (* proc-temp-c 9/5) 32))
+
+    ;; Fan Speed
+    (send-datum-udp "pool.processor.fan-speed" (read-fan-speed))))
 
 (defun reset () 
   (setf *socket* (usocket:socket-connect *graphite-ip* *graphite-udp-port* :protocol :datagram)))
